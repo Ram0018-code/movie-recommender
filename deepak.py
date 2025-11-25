@@ -110,6 +110,8 @@ def fetch_poster(movie_id):
 
 # --- Load everything ---
 st.header("🎬 Movie Recommendation System")
+import os
+st.write("📂 Current Directory Files:", os.listdir())
 
 with st.spinner('Loading Movie Database...'):
     raw_movies = load_data()
