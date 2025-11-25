@@ -16,7 +16,19 @@ st.set_page_config(
 @st.cache_data
 def load_data():
     movies = pd.read_csv('tmdb_5000_movies.csv')
-    credits = pd.read_csv('tmdb_5000_credits.csv')
+
+    # Try reading the zip file safely
+    try:
+        # 1. Try reading it directly
+        credits = pd.read_csv('tmdb_5000_credits.zip', compression='zip')
+    except:
+        # 2. Fallback for Mac/Windows zip structure issues
+        import zipfile
+        with zipfile.ZipFile('tmdb_5000_credits.zip', 'r') as z:
+            # Find the file that ends with .csv inside the zip
+            csv_file = [f for f in z.namelist() if f.endswith('.csv') and '__MACOSX' not in f][0]
+            credits = pd.read_csv(z.open(csv_file))
+
     movies = movies.merge(credits, on='title')
     movies = movies[['movie_id', 'title', 'overview', 'genres', 'keywords', 'cast', 'crew']]
     movies.dropna(inplace=True)
@@ -69,7 +81,7 @@ def train_model(movies):
     new_df = movies[['movie_id', 'title', 'tags']]
     new_df['tags'] = new_df['tags'].apply(lambda x: " ".join(x).lower())
 
-    cv = CountVectorizer(max_features=5000, stop_words='english')
+    cv = CountVectorizer(max_features=2000, stop_words='english')
     vectors = cv.fit_transform(new_df['tags']).toarray()
     similarity = cosine_similarity(vectors)
     
