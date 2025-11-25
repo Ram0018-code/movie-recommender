@@ -15,19 +15,27 @@ st.set_page_config(
 # --- 1. Load and Cache Data ---
 @st.cache_data
 def load_data():
+    import os
+    import zipfile
+    
     movies = pd.read_csv('tmdb_5000_movies.csv')
-
-    # Try reading the zip file safely
+    
+    # Updated to match your actual filename on GitHub
+    zip_filename = 'tmdb_5000_credits.csv.zip'
+    
+    if not os.path.exists(zip_filename):
+        st.error(f"❌ Error: I cannot find '{zip_filename}'")
+        return None
+        
     try:
-        # 1. Try reading it directly
-        credits = pd.read_csv('tmdb_5000_credits.zip', compression='zip')
-    except:
-        # 2. Fallback for Mac/Windows zip structure issues
-        import zipfile
-        with zipfile.ZipFile('tmdb_5000_credits.zip', 'r') as z:
-            # Find the file that ends with .csv inside the zip
+        # Try reading the specific zip file you have
+        with zipfile.ZipFile(zip_filename, 'r') as z:
+            # Find the CSV file inside the zip
             csv_file = [f for f in z.namelist() if f.endswith('.csv') and '__MACOSX' not in f][0]
             credits = pd.read_csv(z.open(csv_file))
+    except Exception as e:
+        st.error(f"❌ Zip Error: {e}")
+        return None
 
     movies = movies.merge(credits, on='title')
     movies = movies[['movie_id', 'title', 'overview', 'genres', 'keywords', 'cast', 'crew']]
