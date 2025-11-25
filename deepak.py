@@ -18,25 +18,36 @@ def load_data():
     import os
     import zipfile
     
+    # 1. Load Movies (Simple)
+    if not os.path.exists('tmdb_5000_movies.csv'):
+        st.error("❌ Error: 'tmdb_5000_movies.csv' not found.")
+        return None
     movies = pd.read_csv('tmdb_5000_movies.csv')
     
-    # Updated to match your actual filename on GitHub
-    zip_filename = 'tmdb_5000_credits.csv.zip'
+    # 2. Load Credits (Smart Check)
+    credits = None
     
-    if not os.path.exists(zip_filename):
-        st.error(f"❌ Error: I cannot find '{zip_filename}'")
-        return None
+    # Check A: Do we have the unzipped CSV? (Likely true locally)
+    if os.path.exists('tmdb_5000_credits.csv'):
+        credits = pd.read_csv('tmdb_5000_credits.csv')
         
-    try:
-        # Try reading the specific zip file you have
-        with zipfile.ZipFile(zip_filename, 'r') as z:
-            # Find the CSV file inside the zip
+    # Check B: Do we have the CSV.ZIP? (Likely true on GitHub)
+    elif os.path.exists('tmdb_5000_credits.csv.zip'):
+        with zipfile.ZipFile('tmdb_5000_credits.csv.zip', 'r') as z:
             csv_file = [f for f in z.namelist() if f.endswith('.csv') and '__MACOSX' not in f][0]
             credits = pd.read_csv(z.open(csv_file))
-    except Exception as e:
-        st.error(f"❌ Zip Error: {e}")
+            
+    # Check C: Do we have just .ZIP? (Alternate name)
+    elif os.path.exists('tmdb_5000_credits.zip'):
+        with zipfile.ZipFile('tmdb_5000_credits.zip', 'r') as z:
+            csv_file = [f for f in z.namelist() if f.endswith('.csv') and '__MACOSX' not in f][0]
+            credits = pd.read_csv(z.open(csv_file))
+            
+    else:
+        st.error("❌ Error: Could not find 'tmdb_5000_credits' in CSV or ZIP format.")
         return None
 
+    # Merge and Clean
     movies = movies.merge(credits, on='title')
     movies = movies[['movie_id', 'title', 'overview', 'genres', 'keywords', 'cast', 'crew']]
     movies.dropna(inplace=True)
