@@ -10,7 +10,7 @@ import ast
 
 # --- 1. CONFIGURATION (Must be first) ---
 st.set_page_config(
-    page_title="CineMatch AI",
+    page_title="Movies Recommendation",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -216,7 +216,7 @@ movies_raw = load_data()
 if movies_raw is not None:
     df, similarity = train_model(movies_raw)
 
-    st.title("🍿 CineMatch AI")
+    st.title("Movies Recommendation")
     st.markdown("<div style='text-align: center; color: #b3b3b3; margin-bottom: 30px;'>Discover your next favorite movie</div>", unsafe_allow_html=True)
 
     # Search Box
