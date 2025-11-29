@@ -40,6 +40,33 @@ st.markdown("""
         display: none;
     }
     
+    /* Modern Search Box Styling */
+    .stSelectbox > div[data-baseweb="select"] > div {
+        background-color: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+    
+    .stSelectbox > div[data-baseweb="select"] > div:hover {
+        border-color: #e50914;
+        background-color: rgba(255, 255, 255, 0.15);
+        box-shadow: 0 0 10px rgba(229, 9, 20, 0.3);
+    }
+    
+    .stSelectbox label {
+        color: #b3b3b3 !important;
+        font-size: 1rem;
+        font-weight: 500;
+    }
+    
+    /* Dropdown Menu Items */
+    div[role="listbox"] ul {
+        background-color: #141414;
+        color: white;
+    }
+    
     /* Poster Hover Zoom with Smooth Animation */
     div[data-testid="stImage"] img {
         border-radius: 8px;
