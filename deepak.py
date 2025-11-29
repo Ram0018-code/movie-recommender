@@ -4,6 +4,9 @@ import requests
 import pickle
 import os
 import zipfile
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import ast
 
 # --- 1. CONFIGURATION (Must be first) ---
 st.set_page_config(
@@ -13,109 +16,125 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. CUSTOM CSS (The Design) ---
-# This injects CSS directly into the app to style buttons, background, and cards
+# --- 2. CUSTOM CSS (Design & Animations) ---
 st.markdown("""
 <style>
-    /* Main Background */
+    /* Dark Netflix-like Background */
     .stApp {
         background-color: #0e1117;
-        background-image: linear-gradient(to right, #0f2027, #203a43, #2c5364); 
+        background-image: linear-gradient(to right, #000000, #1a1a1a);
         color: #ffffff;
     }
     
-    /* Title Styling */
+    /* Red Title */
     h1 {
         font-family: 'Helvetica Neue', sans-serif;
-        color: #e50914 !important; /* Netflix Red */
+        color: #e50914 !important; 
         text-shadow: 2px 2px 4px #000000;
         font-weight: 800;
-        font-size: 3.5rem !important;
         text-align: center;
-        padding-bottom: 20px;
     }
     
-    /* Dropdown Styling */
-    .stSelectbox label {
-        color: #ffffff !important;
-        font-size: 1.2rem;
-    }
-    
-    /* Button Styling */
+    /* Red Button */
     .stButton > button {
-        background-color: #e50914; /* Netflix Red */
+        background-color: #e50914; 
         color: white;
-        border-radius: 5px;
+        border-radius: 4px;
         height: 3em;
         width: 100%;
         border: none;
         font-weight: bold;
         font-size: 1.1rem;
-        transition: all 0.3s ease;
+        transition: 0.3s;
     }
-    
     .stButton > button:hover {
-        background-color: #b20710;
+        background-color: #f40612;
         transform: scale(1.02);
-        box-shadow: 0px 4px 15px rgba(229, 9, 20, 0.4);
     }
     
-    /* Movie Card Effect */
-    div[data-testid="stImage"] {
-        border-radius: 10px;
+    /* Poster Hover Zoom */
+    div[data-testid="stImage"] img {
+        border-radius: 8px;
         transition: transform 0.3s ease;
-        box-shadow: 0 4px 8px 0 rgba(0,0,0,0.5);
     }
-    
-    div[data-testid="stImage"]:hover {
+    div[data-testid="stImage"] img:hover {
         transform: scale(1.05);
-        z-index: 1;
-        box-shadow: 0 8px 16px 0 rgba(0,0,0,0.8);
+        cursor: pointer;
     }
     
-    /* Text Styling */
-    p {
-        font-size: 1.1rem;
-    }
-    
+    /* Movie Title */
     .movie-title {
         font-weight: bold;
         text-align: center;
-        margin-top: 10px;
+        margin-top: 8px;
         font-size: 1rem;
+        color: white;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    
+    /* Watch Provider Text */
+    .provider-text {
+        font-size: 0.75rem; 
+        color: #b3b3b3; 
+        text-align: center;
+        margin-bottom: 5px;
+        height: 30px; /* Fixed height to align buttons */
+    }
+    
+    /* "Watch Now" Button Link */
+    .watch-btn {
+        display: block;
+        margin: 0 auto;
+        width: fit-content;
+        color: #e50914; 
+        border: 1px solid #e50914; 
+        padding: 5px 15px; 
+        border-radius: 4px; 
+        text-decoration: none; 
+        font-size: 0.8rem;
+        font-weight: bold;
+        transition: 0.3s;
+    }
+    .watch-btn:hover {
+        background-color: #e50914;
+        color: white;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. FUNCTIONS ---
+# --- 3. DATA FUNCTIONS ---
 
 @st.cache_data
 def load_data():
-    # Universal Load Logic (Works locally and on cloud)
+    # 1. Load Movies
     if not os.path.exists('tmdb_5000_movies.csv'):
         st.error("❌ Error: 'tmdb_5000_movies.csv' not found.")
         return None
-    
     movies = pd.read_csv('tmdb_5000_movies.csv')
+    
+    # 2. Load Credits (Smart Universal Check)
     credits = None
     
-    # Check for various versions of the credits file
+    # Check A: Do we have the unzipped CSV? (Likely true locally)
     if os.path.exists('tmdb_5000_credits.csv'):
         credits = pd.read_csv('tmdb_5000_credits.csv')
+        
+    # Check B: Do we have the CSV.ZIP? (Likely true on GitHub)
     elif os.path.exists('tmdb_5000_credits.csv.zip'):
         with zipfile.ZipFile('tmdb_5000_credits.csv.zip', 'r') as z:
             csv_file = [f for f in z.namelist() if f.endswith('.csv') and '__MACOSX' not in f][0]
             credits = pd.read_csv(z.open(csv_file))
+            
+    # Check C: Do we have just .ZIP? (Alternate name)
     elif os.path.exists('tmdb_5000_credits.zip'):
         with zipfile.ZipFile('tmdb_5000_credits.zip', 'r') as z:
             csv_file = [f for f in z.namelist() if f.endswith('.csv') and '__MACOSX' not in f][0]
             credits = pd.read_csv(z.open(csv_file))
             
     if credits is None:
-        st.error("❌ Error: Could not find credits file.")
+        st.error("❌ Error: Could not find 'tmdb_5000_credits' file.")
         return None
 
     movies = movies.merge(credits, on='title')
@@ -125,10 +144,6 @@ def load_data():
 
 @st.cache_resource
 def train_model(movies):
-    from sklearn.feature_extraction.text import CountVectorizer
-    from sklearn.metrics.pairwise import cosine_similarity
-    import ast
-
     def convert(obj):
         try: return [i['name'] for i in ast.literal_eval(obj)]
         except: return []
@@ -150,78 +165,108 @@ def train_model(movies):
     movies['tags'] = movies['overview'] + movies['genres'] + movies['keywords'] + movies['cast'] + movies['crew']
     movies['tags'] = movies['tags'].apply(lambda x: " ".join(x).lower())
 
-    # Reduced features for speed/memory
+    # Limit to 2000 for Streamlit Cloud Memory Safety
     cv = CountVectorizer(max_features=2000, stop_words='english')
     vectors = cv.fit_transform(movies['tags']).toarray()
     similarity = cosine_similarity(vectors)
     
     return movies, similarity
 
+# --- 4. API FUNCTIONS ---
+
 def fetch_poster(movie_id):
-    # USE YOUR OWN API KEY HERE
-    api_key = "8265bd1679663a7ea12ac168da84d2e8"
+    api_key = "8265bd1679663a7ea12ac168da84d2e8" # Use your own key if you have one
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={api_key}&language=en-US"
-        data = requests.get(url)
-        data = data.json()
-        poster_path = data['poster_path']
-        return "https://image.tmdb.org/t/p/w500/" + poster_path
+        data = requests.get(url).json()
+        return "https://image.tmdb.org/t/p/w500/" + data['poster_path']
     except:
         return "https://via.placeholder.com/500x750?text=No+Image"
 
-# --- 4. APP LAYOUT ---
+def fetch_watch_providers(movie_id):
+    api_key = "8265bd1679663a7ea12ac168da84d2e8"
+    try:
+        url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers?api_key={api_key}"
+        data = requests.get(url).json()
+        results = data.get('results', {})
+        
+        # Priority: India (IN) first, then US
+        target_country = 'IN' if 'IN' in results else 'US'
+        
+        if target_country in results:
+            provider_data = results[target_country]
+            link = provider_data.get('link', '')
+            
+            # Get Streaming Services (Flatrate)
+            providers = []
+            if 'flatrate' in provider_data:
+                providers = [p['provider_name'] for p in provider_data['flatrate']]
+            
+            # Return top 2 providers (e.g. ['Netflix', 'Amazon Prime']) and the link
+            return providers[:2], link
+            
+        return None, None
+    except:
+        return None, None
 
-# Load Data
+# --- 5. MAIN APP UI ---
+
 movies_raw = load_data()
+
 if movies_raw is not None:
     df, similarity = train_model(movies_raw)
 
     st.title("🍿 CineMatch AI")
-    st.markdown("<h4 style='text-align: center; color: #b3b3b3;'>Discover your next favorite movie with AI</h4>", unsafe_allow_html=True)
-    st.write("") # Spacer
+    st.markdown("<div style='text-align: center; color: #b3b3b3; margin-bottom: 30px;'>Discover your next favorite movie</div>", unsafe_allow_html=True)
 
-    # Search Bar Container
-    with st.container():
-        selected_movie = st.selectbox(
-            "Select a movie from the library:",
-            df['title'].values
-        )
+    # Search Box
+    selected_movie = st.selectbox("Select a movie you like:", df['title'].values)
 
-    st.write("") # Spacer
-    
-    # Recommendation Button
+    st.write("---")
+
     if st.button('🚀 Recommend Movies'):
-        with st.spinner('Analyzing plot, cast, and genres...'):
-            try:
+        try:
+            with st.spinner('Finding matches...'):
                 movie_index = df[df['title'] == selected_movie].index[0]
                 distances = similarity[movie_index]
                 movies_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]
                 
-                st.write("")
-                st.subheader(f"Because you watched '{selected_movie}':")
-                st.write("")
+                st.subheader(f"Because you watched {selected_movie}:")
+                st.write("") 
 
-                # Dynamic Columns
+                # 5 Columns for Recommendations
                 cols = st.columns(5)
                 
                 for idx, col in enumerate(cols):
                     movie_idx = movies_list[idx][0]
                     movie_title = df.iloc[movie_idx].title
                     movie_id = df.iloc[movie_idx].movie_id
+                    
                     poster = fetch_poster(movie_id)
+                    providers, watch_link = fetch_watch_providers(movie_id)
                     
                     with col:
-                        # Display Image
+                        # 1. Poster Image
                         st.image(poster, use_container_width=True)
-                        # Custom HTML for centered title
-                        st.markdown(f"<div class='movie-title'>{movie_title}</div>", unsafe_allow_html=True)
                         
-            except Exception as e:
-                st.error(f"Error: {e}")
+                        # 2. Movie Title
+                        st.markdown(f"<div class='movie-title' title='{movie_title}'>{movie_title}</div>", unsafe_allow_html=True)
+                        
+                        # 3. Streaming Info
+                        if providers:
+                            p_str = ", ".join(providers)
+                            st.markdown(f"<div class='provider-text'>On: <b style='color:#46d369'>{p_str}</b></div>", unsafe_allow_html=True)
+                            st.markdown(f"<a href='{watch_link}' target='_blank' class='watch-btn'>▶ Watch</a>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<div class='provider-text'>Not streaming</div>", unsafe_allow_html=True)
+                            
+        except Exception as e:
+            st.error(f"Error: {e}")
 
     # Footer
+    st.write("")
     st.markdown("---")
-    st.markdown("<p style='text-align: center; color: grey;'>Created by Deepak | Powered by TMDB API & Streamlit</p>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align: center; color: #666;'>Created by Deepak • Powered by TMDB</div>", unsafe_allow_html=True)
 
 else:
     st.stop()
