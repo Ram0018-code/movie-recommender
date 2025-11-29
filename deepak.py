@@ -35,31 +35,21 @@ st.markdown("""
         text-align: center;
     }
     
-    /* Red Button */
+    /* Hide the default button style if any remain */
     .stButton > button {
-        background-color: #e50914; 
-        color: white;
-        border-radius: 4px;
-        height: 3em;
-        width: 100%;
-        border: none;
-        font-weight: bold;
-        font-size: 1.1rem;
-        transition: 0.3s;
-    }
-    .stButton > button:hover {
-        background-color: #f40612;
-        transform: scale(1.02);
+        display: none;
     }
     
-    /* Poster Hover Zoom */
+    /* Poster Hover Zoom with Smooth Animation */
     div[data-testid="stImage"] img {
         border-radius: 8px;
-        transition: transform 0.3s ease;
+        transition: transform 0.4s ease-in-out, box-shadow 0.4s ease-in-out; /* Smooth transition */
     }
     div[data-testid="stImage"] img:hover {
-        transform: scale(1.05);
+        transform: scale(1.08); /* Slightly larger scale */
         cursor: pointer;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.5); /* Add shadow on hover */
+        z-index: 10; /* Ensure it pops out above other elements */
     }
     
     /* Movie Title */
@@ -224,7 +214,8 @@ if movies_raw is not None:
 
     st.write("---")
 
-    if st.button('🚀 Recommend Movies'):
+    # Automatic Recommendation Trigger
+    if selected_movie:
         try:
             with st.spinner('Finding matches...'):
                 movie_index = df[df['title'] == selected_movie].index[0]
