@@ -1,90 +1,145 @@
 import streamlit as st
 import pandas as pd
-import ast
 import requests
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+import pickle
+import os
+import zipfile
 
-# --- Page Config ---
+# --- 1. CONFIGURATION (Must be first) ---
 st.set_page_config(
-    page_title="Movie Genius",
+    page_title="CineMatch AI",
     page_icon="🎬",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# --- 1. Load and Cache Data ---
+# --- 2. CUSTOM CSS (The Design) ---
+# This injects CSS directly into the app to style buttons, background, and cards
+st.markdown("""
+<style>
+    /* Main Background */
+    .stApp {
+        background-color: #0e1117;
+        background-image: linear-gradient(to right, #0f2027, #203a43, #2c5364); 
+        color: #ffffff;
+    }
+    
+    /* Title Styling */
+    h1 {
+        font-family: 'Helvetica Neue', sans-serif;
+        color: #e50914 !important; /* Netflix Red */
+        text-shadow: 2px 2px 4px #000000;
+        font-weight: 800;
+        font-size: 3.5rem !important;
+        text-align: center;
+        padding-bottom: 20px;
+    }
+    
+    /* Dropdown Styling */
+    .stSelectbox label {
+        color: #ffffff !important;
+        font-size: 1.2rem;
+    }
+    
+    /* Button Styling */
+    .stButton > button {
+        background-color: #e50914; /* Netflix Red */
+        color: white;
+        border-radius: 5px;
+        height: 3em;
+        width: 100%;
+        border: none;
+        font-weight: bold;
+        font-size: 1.1rem;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        background-color: #b20710;
+        transform: scale(1.02);
+        box-shadow: 0px 4px 15px rgba(229, 9, 20, 0.4);
+    }
+    
+    /* Movie Card Effect */
+    div[data-testid="stImage"] {
+        border-radius: 10px;
+        transition: transform 0.3s ease;
+        box-shadow: 0 4px 8px 0 rgba(0,0,0,0.5);
+    }
+    
+    div[data-testid="stImage"]:hover {
+        transform: scale(1.05);
+        z-index: 1;
+        box-shadow: 0 8px 16px 0 rgba(0,0,0,0.8);
+    }
+    
+    /* Text Styling */
+    p {
+        font-size: 1.1rem;
+    }
+    
+    .movie-title {
+        font-weight: bold;
+        text-align: center;
+        margin-top: 10px;
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- 3. FUNCTIONS ---
+
 @st.cache_data
 def load_data():
-    import os
-    import zipfile
-    
-    # 1. Load Movies (Simple)
+    # Universal Load Logic (Works locally and on cloud)
     if not os.path.exists('tmdb_5000_movies.csv'):
         st.error("❌ Error: 'tmdb_5000_movies.csv' not found.")
         return None
-    movies = pd.read_csv('tmdb_5000_movies.csv')
     
-    # 2. Load Credits (Smart Check)
+    movies = pd.read_csv('tmdb_5000_movies.csv')
     credits = None
     
-    # Check A: Do we have the unzipped CSV? (Likely true locally)
+    # Check for various versions of the credits file
     if os.path.exists('tmdb_5000_credits.csv'):
         credits = pd.read_csv('tmdb_5000_credits.csv')
-        
-    # Check B: Do we have the CSV.ZIP? (Likely true on GitHub)
     elif os.path.exists('tmdb_5000_credits.csv.zip'):
         with zipfile.ZipFile('tmdb_5000_credits.csv.zip', 'r') as z:
             csv_file = [f for f in z.namelist() if f.endswith('.csv') and '__MACOSX' not in f][0]
             credits = pd.read_csv(z.open(csv_file))
-            
-    # Check C: Do we have just .ZIP? (Alternate name)
     elif os.path.exists('tmdb_5000_credits.zip'):
         with zipfile.ZipFile('tmdb_5000_credits.zip', 'r') as z:
             csv_file = [f for f in z.namelist() if f.endswith('.csv') and '__MACOSX' not in f][0]
             credits = pd.read_csv(z.open(csv_file))
             
-    else:
-        st.error("❌ Error: Could not find 'tmdb_5000_credits' in CSV or ZIP format.")
+    if credits is None:
+        st.error("❌ Error: Could not find credits file.")
         return None
 
-    # Merge and Clean
     movies = movies.merge(credits, on='title')
     movies = movies[['movie_id', 'title', 'overview', 'genres', 'keywords', 'cast', 'crew']]
     movies.dropna(inplace=True)
     return movies
 
-# --- 2. Process Data & Train Model ---
 @st.cache_resource
 def train_model(movies):
+    from sklearn.feature_extraction.text import CountVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    import ast
+
     def convert(obj):
-        L = []
-        try:
-            for i in ast.literal_eval(obj):
-                L.append(i['name'])
-        except: pass
-        return L
+        try: return [i['name'] for i in ast.literal_eval(obj)]
+        except: return []
 
     def convert3(obj):
-        L = []
-        counter = 0
-        try:
-            for i in ast.literal_eval(obj):
-                if counter != 3:
-                    L.append(i['name'])
-                    counter += 1
-                else: break
-        except: pass
-        return L
+        try: return [i['name'] for i in ast.literal_eval(obj)][:3]
+        except: return []
 
     def fetch_director(obj):
-        L = []
-        try:
-            for i in ast.literal_eval(obj):
-                if i['job'] == 'Director':
-                    L.append(i['name'])
-                    break
-        except: pass
-        return L
+        try: return [i['name'] for i in ast.literal_eval(obj) if i['job'] == 'Director'][:1]
+        except: return []
 
     movies['genres'] = movies['genres'].apply(convert)
     movies['keywords'] = movies['keywords'].apply(convert)
@@ -92,91 +147,81 @@ def train_model(movies):
     movies['crew'] = movies['crew'].apply(fetch_director)
     movies['overview'] = movies['overview'].apply(lambda x: x.split())
 
-    for col in ['genres', 'keywords', 'cast', 'crew']:
-        movies[col] = movies[col].apply(lambda x: [i.replace(" ", "") for i in x])
-
     movies['tags'] = movies['overview'] + movies['genres'] + movies['keywords'] + movies['cast'] + movies['crew']
-    
-    new_df = movies[['movie_id', 'title', 'tags']]
-    new_df['tags'] = new_df['tags'].apply(lambda x: " ".join(x).lower())
+    movies['tags'] = movies['tags'].apply(lambda x: " ".join(x).lower())
 
+    # Reduced features for speed/memory
     cv = CountVectorizer(max_features=2000, stop_words='english')
-    vectors = cv.fit_transform(new_df['tags']).toarray()
+    vectors = cv.fit_transform(movies['tags']).toarray()
     similarity = cosine_similarity(vectors)
     
-    return new_df, similarity
+    return movies, similarity
 
-# --- 3. Function to Fetch Posters ---
 def fetch_poster(movie_id):
-    # ------------------------------------------------------------------
-    # IMPORTANT: You need an API Key for real posters!
-    # 1. Go to https://www.themoviedb.org/ -> Login -> Settings -> API
-    # 2. Copy your API Key and paste it below inside the quotes.
-    # ------------------------------------------------------------------
-    api_key = "1ee38f5d72fa5c35f06e6b5b5ba5b364" 
-    # Note: I've provided a sample key, but it's best to use your own!
-    
+    # USE YOUR OWN API KEY HERE
+    api_key = "8265bd1679663a7ea12ac168da84d2e8"
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={api_key}&language=en-US"
         data = requests.get(url)
         data = data.json()
         poster_path = data['poster_path']
-        full_path = "https://image.tmdb.org/t/p/w500/" + poster_path
-        return full_path
+        return "https://image.tmdb.org/t/p/w500/" + poster_path
     except:
-        # Returns a grey placeholder image if the API fails or key is invalid
-        return "https://via.placeholder.com/500x750?text=No+Image+Available"
+        return "https://via.placeholder.com/500x750?text=No+Image"
 
-# --- Load everything ---
-st.header("🎬 Movie Recommendation System")
-import os
-st.write("📂 Current Directory Files:", os.listdir())
+# --- 4. APP LAYOUT ---
 
-with st.spinner('Loading Movie Database...'):
-    raw_movies = load_data()
-    df, similarity = train_model(raw_movies)
+# Load Data
+movies_raw = load_data()
+if movies_raw is not None:
+    df, similarity = train_model(movies_raw)
 
-# --- Website UI ---
-st.markdown("""
-<style>
-.big-font { font-size:20px !important; }
-img { border-radius: 10px; }
-</style>
-""", unsafe_allow_html=True)
+    st.title("🍿 CineMatch AI")
+    st.markdown("<h4 style='text-align: center; color: #b3b3b3;'>Discover your next favorite movie with AI</h4>", unsafe_allow_html=True)
+    st.write("") # Spacer
 
-st.write("Select a movie you like, and we will suggest 5 others with similar plots, genres, and cast.")
+    # Search Bar Container
+    with st.container():
+        selected_movie = st.selectbox(
+            "Select a movie from the library:",
+            df['title'].values
+        )
 
-selected_movie = st.selectbox(
-    "Type or select a movie:",
-    df['title'].values
-)
-
-if st.button('Show Recommendations'):
-    try:
-        movie_index = df[df['title'] == selected_movie].index[0]
-        distances = similarity[movie_index]
-        movies_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]
-        
-        st.subheader(f"Because you watched {selected_movie}:")
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        cols = [col1, col2, col3, col4, col5]
-        
-        # Loop through results
-        for idx, col in enumerate(cols):
-            movie_idx = movies_list[idx][0]
-            movie_title = df.iloc[movie_idx].title
-            movie_id = df.iloc[movie_idx].movie_id
-            
-            # Fetch the poster
-            poster_url = fetch_poster(movie_id)
-            
-            with col:
-                st.text(movie_title)
-                st.image(poster_url)
+    st.write("") # Spacer
+    
+    # Recommendation Button
+    if st.button('🚀 Recommend Movies'):
+        with st.spinner('Analyzing plot, cast, and genres...'):
+            try:
+                movie_index = df[df['title'] == selected_movie].index[0]
+                distances = similarity[movie_index]
+                movies_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]
                 
-    except Exception as e:
-        st.error(f"Error: {e}")
+                st.write("")
+                st.subheader(f"Because you watched '{selected_movie}':")
+                st.write("")
 
-st.sidebar.markdown("### About")
-st.sidebar.info("This project uses Content-Based Filtering. It analyzes movie tags (plot, cast, director) to find mathematical similarities.")
+                # Dynamic Columns
+                cols = st.columns(5)
+                
+                for idx, col in enumerate(cols):
+                    movie_idx = movies_list[idx][0]
+                    movie_title = df.iloc[movie_idx].title
+                    movie_id = df.iloc[movie_idx].movie_id
+                    poster = fetch_poster(movie_id)
+                    
+                    with col:
+                        # Display Image
+                        st.image(poster, use_container_width=True)
+                        # Custom HTML for centered title
+                        st.markdown(f"<div class='movie-title'>{movie_title}</div>", unsafe_allow_html=True)
+                        
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    # Footer
+    st.markdown("---")
+    st.markdown("<p style='text-align: center; color: grey;'>Created by Deepak | Powered by TMDB API & Streamlit</p>", unsafe_allow_html=True)
+
+else:
+    st.stop()
